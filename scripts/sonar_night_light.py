@@ -18,7 +18,7 @@ import colorsys
 # Ultrasonic HC-SR04
 from Bluetin_Echo import Echo
 # Define GPIO pin constants.
-TRIGGER_PIN = 13
+TRIGGER_PIN = 22
 ECHO_PIN = 26
 # Initialise Sensor with pins, speed of sound.
 speed_of_sound = 315
@@ -46,7 +46,7 @@ JUNK_MIN_DIST = 5.0
 
 
 # LED strip configuration:
-LED_COUNT      = 300      # Number of LED pixels.
+LED_COUNT      = 500      # Number of LED pixels.
 LED_PIN        = 18      # GPIO pin connected to the pixels (18 uses PWM!).
 #LED_PIN        = 10      # GPIO pin connected to the pixels (10 uses SPI /dev/spidev0.0).
 LED_FREQ_HZ    = 800000  # LED signal frequency in hertz (usually 800khz)
@@ -254,7 +254,7 @@ async def ongoing_update(strip, event_loop):
 
 async def sonar_colors(strip, event_loop):
 
-    sonar_wait = 0.4
+    sonar_wait = 0.9
     while True:
         await asyncio.sleep(sonar_wait)
 
@@ -265,7 +265,8 @@ async def sonar_colors(strip, event_loop):
         if dist <= JUNK_MIN_DIST:
             # could be junk
             print('.... junk distance, skipping')
-            continue
+            dist = random.randint(1, MAX_DIST - 1)
+            #continue
         
         ndist = normalize_dist(dist, max_dist=200.)
         
@@ -285,12 +286,24 @@ async def sonar_colors(strip, event_loop):
             print(ndist)
             hue = ndist #dist / MAX_DIST
             #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-            new_color = hsv_to_color(hue, 1.0, 1.0 - hue)
+            new_color = hsv_to_color(hue, 1.0, 0.6)
+            color2 = hsv_to_color(hue / 2.0, 1.0, 0.6)
+            strip.all_to_color(new_color, show=True)
+            strip2.all_to_color(color2, show=True)
+
             #strip.setPixelColor(3, new_color)
-            #for i in range(0, 100, 1):
-            #    strip.setPixelColorRGB(i, 3, 9, 0)
-            #strip.show()
-            strip.all_to_color(color=new_color, show=True)
+            maxp = 300
+            # for i in range(0, maxp, 1):
+            #     new_hue = hue * (maxp - i) / float(maxp)
+            #     cc = hsv_to_color(new_hue, 1.0, 0.6)
+            #     strip.setPixelColor(i, cc)
+            # strip.show()
+
+            # for j in range(6):
+            #     for i in range(50*j, 50*(j+1), 1):
+            #         #print(i)
+            #         strip.setPixelColorRGB(i, 0, j*5, 55)
+            # strip.show()
 
             #
             # if EXPLODE_ENABLED and not strip.exploding:
@@ -321,8 +334,14 @@ if __name__ == '__main__':
                       strip_type=ws.WS2811_STRIP_GRB)
     # Intialize the library (must be called once before other functions).
     strip.begin()
-
     strip.all_to_color(color=Color(0, 45, 4))
+
+    LED_PIN_2 = 13
+    strip2 = TreeStrip(LED_COUNT, LED_PIN_2, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, 1,
+                      strip_type=ws.WS2811_STRIP_GRB)
+
+    strip2.begin()
+    strip2.all_to_color(color=Color(0, 0, 8))
 
     # print ('Press Ctrl-C to quit.')
     # if not args.clear:
