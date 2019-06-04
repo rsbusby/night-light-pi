@@ -26,7 +26,8 @@ echo = Echo(TRIGGER_PIN, ECHO_PIN, speed_of_sound)
 samples = 3
 
 EXPLODE_ENABLED = False
-MAX_DIST = 200.0
+MAX_DIST = 190.0
+JUNK_MIN_DIST = 5.0
 
 #
 # async def sonar_gen():
@@ -148,9 +149,9 @@ class TreeStrip(Adafruit_NeoPixel):
 
     def all_to_color(self, color, show=True):
 
-        print("Chaging to {} ".format(color))
+        #print("Chaging to {} ".format(color))
         for i in range(self.num_pix):
-            self.setPixelColor2(i, color)
+            self.setPixelColor(i, color)
         if show:
             self.show()
 
@@ -236,11 +237,11 @@ class TreeStrip(Adafruit_NeoPixel):
             self.show()
 
 
-def normalize_dist(distance_in_cm, max_dist = 140.0):
+def normalize_dist(distance_in_cm, max_dist = MAX_DIST):
 
     if distance_in_cm > max_dist:
         return 1.0
-    elif distance_in_cm <= 6.0:
+    elif distance_in_cm <= 0.0:
         return 0.0    
     return distance_in_cm / max_dist 
 
@@ -257,13 +258,13 @@ async def sonar_colors(strip, event_loop):
     while True:
         await asyncio.sleep(sonar_wait)
 
-        dist = echo.read('cm', samples=1)
+        dist = echo.read('cm', samples=samples)
         #print(dist)
 
-        print("{:0.2f} cm disttttance".format(dist))
-        if dist < -6.0:
+        print("{:0.0f} cm distance".format(dist))
+        if dist <= JUNK_MIN_DIST:
             # could be junk
-            print('junk')
+            print('.... junk distance, skipping')
             continue
         
         ndist = normalize_dist(dist, max_dist=200.)
@@ -274,26 +275,29 @@ async def sonar_colors(strip, event_loop):
         # print("target pixel is now {}".format(strip.target_pixel))
         #strip.update()
         
-        if dist < 20.0:
-            print("yooo")
-            #base_color = hsv_to_color(0.9, 0.2, 0.3) #Color(15, 7, 0) #sonar_color_dict[2]
-        #elif dist < 30:
-        #    base_color = sonar_color_dict[1]
-        elif dist < 168.0:
-            new_color = hsv_to_color(240.0 / dist, 0.3, 0.2) # Color(30, 14, 0)  #sonar_color_dict[4]
-
+        # if dist < 20.0:
+        #     print("yooo")
+        #     #base_color = hsv_to_color(0.9, 0.2, 0.3) #Color(15, 7, 0) #sonar_color_dict[2]
+        # #elif dist < 30:
+        # #    base_color = sonar_color_dict[1]
+        # elif dist < 168.0:
+        if True:
+            print(ndist)
+            hue = ndist #dist / MAX_DIST
+            #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
+            new_color = hsv_to_color(hue, 1.0, 1.0 - hue)
             #strip.setPixelColor(3, new_color)
-            for i in range(0, 100, 1):
-                strip.setPixelColorRGB(i, 3, 9, 0)
-            strip.show()
-            #strip.all_to_color(color=base_color, show=True)
+            #for i in range(0, 100, 1):
+            #    strip.setPixelColorRGB(i, 3, 9, 0)
+            #strip.show()
+            strip.all_to_color(color=new_color, show=True)
 
             #
             # if EXPLODE_ENABLED and not strip.exploding:
             #     strip.exploding = True
             #     event_loop.create_task(strip.explode())
-        else:
-            pass
+        # else:
+        #     pass
             #base_color = Color(6, 3, 0)  #sonar_color_dict[5]
 
         #if base_color != strip.base_color:
@@ -325,37 +329,37 @@ if __name__ == '__main__':
     #     print('Use "-c" argument to clear LEDs on exit')
 
 
-    while 1:
-        dist = echo.read('cm', samples=samples)
-        hue = dist / MAX_DIST
-        hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-
-        print(f'Hue: {hue:.2}')
-
-        if hue <= 0.0001:
-            continue
-
-        new_color = hsv_to_color(hue, 1.0, 1.0 - hue)
-        for i in range(0, strip.numPixels(), 1):
-            #strip.setPixelColorRGB(i, 3, 9, 0)
-            strip.setPixelColor(n=i, color=new_color)
-        strip.show()
-        time.sleep(0.1)
-
-    # loop = asyncio.get_event_loop()
-    # try:
-    #     print('task creation started')
-    #     #loop.create_task(ongoing_update(strip, event_loop=loop))
-    #     loop.create_task(sonar_colors(strip, event_loop=loop))
-    #     loop.run_forever()
-    # except KeyboardInterrupt:
-    #     print("HEEEY")
-    #     raise
-    # finally:
-    #     loop.close()
+    # while 1:
+    #     dist = echo.read('cm', samples=samples)
+    #     hue = dist / MAX_DIST
+    #     hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
     #
+    #     print(f'Hue: {hue:.2}')
     #
+    #     if hue <= 0.0001:
+    #         continue
     #
+    #     new_color = hsv_to_color(hue, 1.0, 1.0 - hue)
+    #     for i in range(0, strip.numPixels(), 1):
+    #         #strip.setPixelColorRGB(i, 3, 9, 0)
+    #         strip.setPixelColor(n=i, color=new_color)
+    #     strip.show()
+    #     time.sleep(0.1)
+
+    loop = asyncio.get_event_loop()
+    try:
+        print('task creation started')
+        #loop.create_task(ongoing_update(strip, event_loop=loop))
+        loop.create_task(sonar_colors(strip, event_loop=loop))
+        loop.run_forever()
+    except KeyboardInterrupt:
+        print("HEEEY")
+        raise
+    finally:
+        loop.close()
+
+
+
 
     #print("The task's result was: {}".format(task_obj.result()))
     #
