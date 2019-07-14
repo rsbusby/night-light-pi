@@ -152,7 +152,7 @@ class TreeStrip(Adafruit_NeoPixel):
 
     def all_to_color(self, color, show=True):
 
-        #print("Chaging to {} ".format(color))
+        #print("Changing to {} ".format(color))
         for i in range(self.num_pix):
             self.setPixelColor(i, color)
         if show:
@@ -258,6 +258,13 @@ async def ongoing_update(strip, event_loop):
 async def sonar_colors(strip, event_loop):
 
     sonar_wait = 0.2
+
+    current_hue = 0.0
+    current_brightness = 0.0
+    smoothing_factor = 0.2
+    smoothing_enabled = True
+    close_enough = 0.02
+
     while True:
         await asyncio.sleep(sonar_wait)
 
@@ -293,13 +300,27 @@ async def sonar_colors(strip, event_loop):
             red_reverse_hue = (1.0 / red_fac) - (hue / red_fac)
             night_bright = HSV_BRIGHTNESS_TEST * (1.0 - ndist)
 
-            #print(hue)
-            #print(red_reverse_hue)
-            #print('')
-            #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-            new_color = hsv_to_color(red_reverse_hue, 1.0, night_bright)
-            color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
-            strip.all_to_color(new_color, show=True)
+            print(f"reverse hue: {red_reverse_hue}")
+
+            # only update if there's a change
+            if abs((red_reverse_hue - current_hue) / red_reverse_hue) > close_enough:
+                if smoothing_enabled:
+                    print("\n\nSmoothing\n")
+                    new_hue = (red_reverse_hue - current_hue) * smoothing_factor + current_hue
+                    print(f'Current: {current_hue}')
+
+                    print(f'Smoothed: {new_hue}')
+                    current_hue = new_hue
+                else:
+                    new_hue = red_reverse_hue
+
+                #print(hue)
+                #print(red_reverse_hue)
+                #print('')
+                #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
+                new_color = hsv_to_color(new_hue, 1.0, night_bright)
+                #color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
+                strip.all_to_color(new_color, show=True)
 
             ## turn off 2nd strip for now
             #strip2.all_to_color(color2, show=True)
@@ -349,12 +370,14 @@ if __name__ == '__main__':
     strip.begin()
     strip.all_to_color(color=Color(0, 45, 4))
 
-    LED_PIN_2 = 13
-    strip2 = TreeStrip(LED_COUNT, LED_PIN_2, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, 1,
-                      strip_type=ws.WS2811_STRIP_GRB)
+    if False:
+        # second strip
+        LED_PIN_2 = 13
+        strip2 = TreeStrip(LED_COUNT, LED_PIN_2, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, 1,
+                          strip_type=ws.WS2811_STRIP_GRB)
 
-    strip2.begin()
-    strip2.all_to_color(color=Color(0, 0, 8))
+        strip2.begin()
+        strip2.all_to_color(color=Color(0, 0, 8))
 
     # print ('Press Ctrl-C to quit.')
     # if not args.clear:
@@ -385,7 +408,7 @@ if __name__ == '__main__':
         loop.create_task(sonar_colors(strip, event_loop=loop))
         loop.run_forever()
     except KeyboardInterrupt:
-        print("HEEEY")
+        print("DONE")
         raise
     finally:
         loop.close()
