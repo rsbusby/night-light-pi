@@ -7,7 +7,7 @@ from neopixel import *
 import argparse
 import random
 
-update_period = 0.8
+update_period = 8.8
 
 from collections import deque
 
@@ -46,12 +46,15 @@ JUNK_MIN_DIST = 5.0
 
 
 # LED strip configuration:
+
+HSV_BRIGHTNESS_TEST = 0.2
+
 LED_COUNT      = 500      # Number of LED pixels.
 LED_PIN        = 18      # GPIO pin connected to the pixels (18 uses PWM!).
 #LED_PIN        = 10      # GPIO pin connected to the pixels (10 uses SPI /dev/spidev0.0).
 LED_FREQ_HZ    = 800000  # LED signal frequency in hertz (usually 800khz)
 LED_DMA        = 10      # DMA channel to use for generating signal (try 10)
-LED_BRIGHTNESS = 100     # Set to 0 for darkest and 255 for brightest
+LED_BRIGHTNESS = 250     # Set to 0 for darkest and 255 for brightest
 LED_INVERT     = False   # True to invert the signal (when using NPN transistor level shift)
 LED_CHANNEL    = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
@@ -254,7 +257,7 @@ async def ongoing_update(strip, event_loop):
 
 async def sonar_colors(strip, event_loop):
 
-    sonar_wait = 0.9
+    sonar_wait = 0.2
     while True:
         await asyncio.sleep(sonar_wait)
 
@@ -285,11 +288,21 @@ async def sonar_colors(strip, event_loop):
         if True:
             print(ndist)
             hue = ndist #dist / MAX_DIST
+
+            red_fac = 8.0
+            red_reverse_hue = (1.0 / red_fac) - (hue / red_fac)
+            night_bright = HSV_BRIGHTNESS_TEST * (1.0 - ndist)
+
+            #print(hue)
+            #print(red_reverse_hue)
+            #print('')
             #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-            new_color = hsv_to_color(hue, 1.0, 0.6)
-            color2 = hsv_to_color(hue / 2.0, 1.0, 0.6)
+            new_color = hsv_to_color(red_reverse_hue, 1.0, night_bright)
+            color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
             strip.all_to_color(new_color, show=True)
-            strip2.all_to_color(color2, show=True)
+
+            ## turn off 2nd strip for now
+            #strip2.all_to_color(color2, show=True)
 
             #strip.setPixelColor(3, new_color)
             maxp = 300
