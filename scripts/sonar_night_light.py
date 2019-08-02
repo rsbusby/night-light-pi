@@ -7,7 +7,6 @@ from neopixel import *
 import argparse
 import random
 
-update_period = 8.8
 
 from collections import deque
 
@@ -23,27 +22,13 @@ ECHO_PIN = 26
 # Initialise Sensor with pins, speed of sound.
 speed_of_sound = 315
 echo = Echo(TRIGGER_PIN, ECHO_PIN, speed_of_sound)
-samples = 3
+samples = 1
 
 EXPLODE_ENABLED = False
 MAX_DIST = 190.0
 JUNK_MIN_DIST = 5.0
 
-#
-# async def sonar_gen():
-#     await asyncio.sleep(0.4)
-#     dist =  echo.read('cm', samples)
-#     print(dist)
-#     yield dist
-
-
-# async def monitor_sonar():
-#
-#     while True:
-#         await asyncio.sleep(0.4)
-#         dist = echo.read('cm', samples)
-#         print("{:0.2f} cm distanceee".format(dist))
-
+update_period = 0.1
 
 # LED strip configuration:
 
@@ -59,25 +44,6 @@ LED_INVERT     = False   # True to invert the signal (when using NPN transistor 
 LED_CHANNEL    = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
 
-wait_std = 80
-
-
-#
-# # sine wave
-# from math import *
-# Fs = 8000
-# f = 10
-# sample=10000
-# a=[0]*sample
-# for n in range(sample):
-#     a[n]=sin(2*pi*f*n/Fs)
-
-
-#num_pix = strip.numPixels()
-#pixb=[0]*strip.numPixels()
-#for n in range(num_pix):
-#   pixb[n] = 0 
-
 def name_to_color(color_name):
     try:
         wc = webcolors.name_to_rgb(color_name)
@@ -87,6 +53,7 @@ def name_to_color(color_name):
         print(e)
         return Color(0, 60, 0)
 
+
 def hsv_to_color(hue, sat, val):
     #print("YEEAEASH")
     #from hsv import hsv_to_rgb
@@ -95,9 +62,10 @@ def hsv_to_color(hue, sat, val):
     green = int(rgb_tuple[1] * 255)
     blue = int(rgb_tuple[2] * 255)
 
-    print (red, green, blue)
+    #print (red, green, blue)
 
     return Color(red, green, blue)
+
 
 yellow_orange = Color(255, 215, 0)
 purple = Color(160, 32, 240)
@@ -109,30 +77,12 @@ green = name_to_color('green') #Color(88, 4, 4),
 orange = Color(255, 110, 0)
 dark_orange = Color(12, 8, 0)
 
-palette_1 = {
-    0: name_to_color('violet'),
-    1: purple,
-    2: dark_orange,
-    3: Color(99, 66, 66),
-    4: Color(66, 66, 66),
-    5: Color(0, 6, 0)
-    }
-#
-# sonar_color_dict_orig = {
-#     '20': Color(88, 4, 4),
-#     '30': Color(99, 66, 66),
-#     '40': Color(66, 66, 66),
-#     '100': Color(0, 6, 66),
-#     }
-
-sonar_color_dict = palette_1
-
 
 class TreeStrip(Adafruit_NeoPixel):
 
     def __init__(self, *args, **kwargs):
         super(TreeStrip, self).__init__(*args, **kwargs)
-        self.base_color = dark_orange #Color(22, 0, 3)
+        self.base_color = dark_orange
         self.previous_base_color = dark_orange
         self.active_color = orange
         self.num_pix = self.numPixels()
@@ -145,6 +95,49 @@ class TreeStrip(Adafruit_NeoPixel):
         self.explode_color = Color(40, 22, 0) #name_to_color('aqua')
         self.next_explode_color = Color(0, 0, 50)
         self.exploding = False
+
+        # HSV (Hue Saturation Vrightness)
+        self.current_hue = 0.0
+        self.target_hue = 0.0
+        self.current_brightness = 0.1
+        self.target_brightness = 0.1
+
+        self.smoothing_factor = 0.04
+        self.close_enough = 0.02
+
+        self.flicker = False
+        self.verbosity = 0
+
+    def update_hues(self):
+
+        if abs(self.target_hue - self.current_hue) > self.close_enough:
+            if self.verbosity > 1:
+                print('updating')
+            new_hue = (self.target_hue - self.current_hue) * self.smoothing_factor + self.current_hue
+            new_brightness = (self.target_brightness - self.current_brightness) * self.smoothing_factor + self.current_brightness
+
+            if not self.flicker:
+                self.set_to_single_hue(new_brightness=new_brightness, new_hue=new_hue)
+            else:
+                print('flicker dynamic')
+
+            self.current_brightness = new_brightness
+            self.current_hue = new_hue
+        else:
+            if not self.flicker:
+                if self.verbosity > 2:
+                    print('already there')
+            else:
+                print('flicker static')
+                pass
+            pass
+
+    def flicker_static(self, hue, brightness):
+        return
+
+    def set_to_single_hue(self, new_hue, new_brightness):
+        new_color = hsv_to_color(new_hue, 1.0, new_brightness)
+        strip.all_to_color(new_color, show=True)
 
     def setPixelColor2(self, pixel, color):
         i = pixel #self.num_pix - pixel
@@ -192,8 +185,6 @@ class TreeStrip(Adafruit_NeoPixel):
         if len(self.old_pixel_stack) > 8:
             pixel = self.old_pixel_stack.pop()
 
-        #self.setPixelColor(pixel, self.base_color)            
-        #pixel_color = Color(22, 0, 0)
         for pixel in self.old_pixel_stack:
             if pixel != self.active_pixel:
                 #print("changing {} pixel to dim".format(pixel))
@@ -252,12 +243,12 @@ def normalize_dist(distance_in_cm, max_dist = MAX_DIST):
 async def ongoing_update(strip, event_loop):
     while True:
         await asyncio.sleep(update_period)
-        strip.update()
+        strip.update_hues()
 
 
 async def sonar_colors(strip, event_loop):
 
-    sonar_wait = 0.2
+    sonar_wait = 0.5
 
     current_hue = 0.0
     current_brightness = 0.0
@@ -268,7 +259,7 @@ async def sonar_colors(strip, event_loop):
     while True:
         await asyncio.sleep(sonar_wait)
 
-        dist = echo.read('cm', samples=samples)
+        dist = await echo.read_async('cm', samples=samples)
         #print(dist)
 
         print("{:0.0f} cm distance".format(dist))
@@ -293,7 +284,7 @@ async def sonar_colors(strip, event_loop):
         # #    base_color = sonar_color_dict[1]
         # elif dist < 168.0:
         if True:
-            print(ndist)
+            print(f'normalized distance: {ndist}')
             hue = ndist #dist / MAX_DIST
 
             red_fac = 8.0
@@ -302,25 +293,30 @@ async def sonar_colors(strip, event_loop):
 
             print(f"reverse hue: {red_reverse_hue}")
 
-            # only update if there's a change
-            if abs((red_reverse_hue - current_hue) / red_reverse_hue) > close_enough:
-                if smoothing_enabled:
-                    print("\n\nSmoothing\n")
-                    new_hue = (red_reverse_hue - current_hue) * smoothing_factor + current_hue
-                    print(f'Current: {current_hue}')
 
-                    print(f'Smoothed: {new_hue}')
-                    current_hue = new_hue
-                else:
-                    new_hue = red_reverse_hue
+            strip.target_hue = red_reverse_hue
+            strip.target_brightness = night_bright
 
-                #print(hue)
-                #print(red_reverse_hue)
-                #print('')
-                #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-                new_color = hsv_to_color(new_hue, 1.0, night_bright)
-                #color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
-                strip.all_to_color(new_color, show=True)
+            #
+            # # only update if there's a change
+            # if abs((red_reverse_hue - current_hue) / red_reverse_hue) > close_enough:
+            #     if smoothing_enabled:
+            #         print("\n\nSmoothing\n")
+            #         new_hue = (red_reverse_hue - current_hue) * smoothing_factor + current_hue
+            #         print(f'Current: {current_hue}')
+            #
+            #         print(f'Smoothed: {new_hue}')
+            #         current_hue = new_hue
+            #     else:
+            #         new_hue = red_reverse_hue
+            #
+            #     #print(hue)
+            #     #print(red_reverse_hue)
+            #     #print('')
+            #     #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
+            #     new_color = hsv_to_color(new_hue, 1.0, night_bright)
+            #     #color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
+            #     strip.all_to_color(new_color, show=True)
 
             ## turn off 2nd strip for now
             #strip2.all_to_color(color2, show=True)
@@ -362,8 +358,7 @@ if __name__ == '__main__':
     # parser.add_argument('-c', '--clear', action='store_true', help='clear the display on exit')
     # args = parser.parse_args()
 
-    # Create NeoPixel object with appropriate configuration.
-    #strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL, strip_type=ws.WS2811_STRIP_GRB)
+    # Create LED strip object with appropriate configuration.
     strip = TreeStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
                       strip_type=ws.WS2811_STRIP_GRB)
     # Intialize the library (must be called once before other functions).
@@ -379,32 +374,11 @@ if __name__ == '__main__':
         strip2.begin()
         strip2.all_to_color(color=Color(0, 0, 8))
 
-    # print ('Press Ctrl-C to quit.')
-    # if not args.clear:
-    #     print('Use "-c" argument to clear LEDs on exit')
-
-
-    # while 1:
-    #     dist = echo.read('cm', samples=samples)
-    #     hue = dist / MAX_DIST
-    #     hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-    #
-    #     print(f'Hue: {hue:.2}')
-    #
-    #     if hue <= 0.0001:
-    #         continue
-    #
-    #     new_color = hsv_to_color(hue, 1.0, 1.0 - hue)
-    #     for i in range(0, strip.numPixels(), 1):
-    #         #strip.setPixelColorRGB(i, 3, 9, 0)
-    #         strip.setPixelColor(n=i, color=new_color)
-    #     strip.show()
-    #     time.sleep(0.1)
-
     loop = asyncio.get_event_loop()
     try:
         print('task creation started')
-        #loop.create_task(ongoing_update(strip, event_loop=loop))
+        echo.event_loop = loop
+        loop.create_task(ongoing_update(strip, event_loop=loop))
         loop.create_task(sonar_colors(strip, event_loop=loop))
         loop.run_forever()
     except KeyboardInterrupt:
@@ -412,9 +386,6 @@ if __name__ == '__main__':
         raise
     finally:
         loop.close()
-
-
-
 
     #print("The task's result was: {}".format(task_obj.result()))
     #
