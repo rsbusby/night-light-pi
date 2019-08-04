@@ -28,7 +28,7 @@ EXPLODE_ENABLED = False
 MAX_DIST = 190.0
 JUNK_MIN_DIST = 5.0
 
-update_period = 0.1
+update_period = 0.005
 
 # LED strip configuration:
 
@@ -230,6 +230,99 @@ class TreeStrip(Adafruit_NeoPixel):
         if updated:
             self.show()
 
+import numpy as np
+
+
+class FireStrip(TreeStrip):
+
+    def __init__(self, *args, **kwargs):
+        super(FireStrip, self).__init__(*args, **kwargs)
+        self.heat = np.zeros(self.num_pix)
+        self.heat_bright = np.zeros(self.num_pix)
+        self.cooling_factor = kwargs.get('cooling_factor', 10)
+        self.spark_region_factor = 4
+        self.sparking_threshold = kwargs.get('sparking_threshold', 100)
+        self.red_fac = 7.0
+        #self.hue_min = 0.0
+        #self.hue_max = 0.2
+
+    def cool_pixel(self, cur_heat):
+
+        if cur_heat == 0:
+            return 0
+
+        new_heat = cur_heat - random.randint(2, self.cooling_factor)
+        if new_heat < 0:
+            return 0
+        return new_heat
+
+    def heat_pixel(self, cur_val):
+        new_val = cur_val + random.randint(160, 255)
+        if new_val > 255:
+            new_val = 255
+        return new_val
+
+    #def drift_pixel(self):
+
+    def update_hues(self):
+        # void Fire2012WithPalette()
+        #{
+        # // Array of temperature readings at each simulation cell
+          # static byte heat[NUM_LEDS];
+
+        # Step 1.  Cool down every cell a little
+        # heat[i] = qsub8( heat[i],  random8(0, ((COOLING * 10) / NUM_LEDS) + 2));
+        for i in range(self.num_pix):
+            self.heat[i] = self.cool_pixel(self.heat[i])
+            self.heat_bright[i] = self.cool_pixel(self.heat_bright[i])
+        #self.heat = np.apply_along_axis(self.cool_pixel, 0, self.heat)
+
+
+        # Step 2.  Heat from each cell drifts 'up' and diffuses a little
+        #    for( int k= NUM_LEDS - 1; k >= 2; k--) {
+        #      heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2] ) / 3;
+        for k in range((self.num_pix - 1), 2, -1):
+            self.heat[k] = (self.heat[k - 1] + self.heat[k - 2] + self.heat[k - 2]) / 3
+            self.heat_bright[k] = (self.heat_bright[k - 1] + self.heat_bright[k - 2] + self.heat_bright[k - 2]) / 3
+
+        # Step 3.  Randomly ignite new 'sparks' of heat near the bottom
+        if random.randint(0, 255) < self.sparking_threshold:
+            y = random.randint(0, 30) #self.num_pix / self.spark_region_factor)
+            old_heat = self.heat[y]
+            self.heat[y] = self.heat_pixel(self.heat[y])
+            self.heat_bright[y] = self.heat_pixel(self.heat_bright[y])
+            #print(f'Spark pixel: {y},  old heat: {old_heat}, new_heat: {self.heat[y]}')
+
+        # Step 4.  Map from heat cells to LED colors
+        # map from 255 to subset of HSV.
+
+        for i in range(self.num_pix):
+            max_heat = 255.0
+            #print(self.heat[i])
+            red_reverse_hue = self.heat[i] / max_heat * 0.14  #((max_heat / self.red_fac) - (self.heat[i] / self.red_fac)) / (max_heat / self.red_fac)
+            new_brightness = self.heat_bright[i] / max_heat * 0.2
+            #print(red_reverse_hue)
+            color = hsv_to_color(red_reverse_hue, 1.0, new_brightness)
+            self.setPixelColor(i, color)
+
+        self.show()
+
+
+        #
+        #     for( int j = 0; j < NUM_LEDS; j++) {
+        #       // Scale the heat value from 0-255 down to 0-240
+        #       // for best results with color palettes.
+        #       byte colorindex = scale8( heat[j], 240);
+        #       CRGB color = ColorFromPalette( gPal, colorindex);
+        #       int pixelnumber;
+        #       if( gReverseDirection ) {
+        #         pixelnumber = (NUM_LEDS-1) - j;
+        #       } else {
+        #         pixelnumber = j;
+        #       }
+        #       leds[pixelnumber] = color;
+        #     }
+        # }
 
 def normalize_dist(distance_in_cm, max_dist = MAX_DIST):
 
@@ -270,86 +363,21 @@ async def sonar_colors(strip, event_loop):
             #continue
         
         ndist = normalize_dist(dist, max_dist=200.)
-        
-        # pixel = strip.num_pix - strip.get_pixel_from_normalized_float(ndist)
-        # print(pixel)
-        # strip.target_pixel = pixel
-        # print("target pixel is now {}".format(strip.target_pixel))
-        #strip.update()
-        
-        # if dist < 20.0:
-        #     print("yooo")
-        #     #base_color = hsv_to_color(0.9, 0.2, 0.3) #Color(15, 7, 0) #sonar_color_dict[2]
-        # #elif dist < 30:
-        # #    base_color = sonar_color_dict[1]
-        # elif dist < 168.0:
-        if True:
+
+        # FireStrip
+        strip.sparking_threshold = (1.0 - ndist) * 255.0
+
+        # For TreeStrip
+        if False:
             print(f'normalized distance: {ndist}')
             hue = ndist #dist / MAX_DIST
-
             red_fac = 8.0
             red_reverse_hue = (1.0 / red_fac) - (hue / red_fac)
             night_bright = HSV_BRIGHTNESS_TEST * (1.0 - ndist)
-
             print(f"reverse hue: {red_reverse_hue}")
-
-
             strip.target_hue = red_reverse_hue
             strip.target_brightness = night_bright
 
-            #
-            # # only update if there's a change
-            # if abs((red_reverse_hue - current_hue) / red_reverse_hue) > close_enough:
-            #     if smoothing_enabled:
-            #         print("\n\nSmoothing\n")
-            #         new_hue = (red_reverse_hue - current_hue) * smoothing_factor + current_hue
-            #         print(f'Current: {current_hue}')
-            #
-            #         print(f'Smoothed: {new_hue}')
-            #         current_hue = new_hue
-            #     else:
-            #         new_hue = red_reverse_hue
-            #
-            #     #print(hue)
-            #     #print(red_reverse_hue)
-            #     #print('')
-            #     #hue = 0. if hue <= 0 else (1.0 if hue > 1 else hue)
-            #     new_color = hsv_to_color(new_hue, 1.0, night_bright)
-            #     #color2 = hsv_to_color(hue / 2.0, 1.0, night_bright)
-            #     strip.all_to_color(new_color, show=True)
-
-            ## turn off 2nd strip for now
-            #strip2.all_to_color(color2, show=True)
-
-            #strip.setPixelColor(3, new_color)
-            maxp = 300
-            # for i in range(0, maxp, 1):
-            #     new_hue = hue * (maxp - i) / float(maxp)
-            #     cc = hsv_to_color(new_hue, 1.0, 0.6)
-            #     strip.setPixelColor(i, cc)
-            # strip.show()
-
-            # for j in range(6):
-            #     for i in range(50*j, 50*(j+1), 1):
-            #         #print(i)
-            #         strip.setPixelColorRGB(i, 0, j*5, 55)
-            # strip.show()
-
-            #
-            # if EXPLODE_ENABLED and not strip.exploding:
-            #     strip.exploding = True
-            #     event_loop.create_task(strip.explode())
-        # else:
-        #     pass
-            #base_color = Color(6, 3, 0)  #sonar_color_dict[5]
-
-        #if base_color != strip.base_color:
-        #    strip.base_color = base_color
-            #strip.all_to_base()
-            #print (strip.base_color)
-            #print(base_color)
-            #strip.base_color = Color(128, 99, 238)
-            #pass
 
 # Main program logic follows:
 if __name__ == '__main__':
@@ -359,7 +387,7 @@ if __name__ == '__main__':
     # args = parser.parse_args()
 
     # Create LED strip object with appropriate configuration.
-    strip = TreeStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
+    strip = FireStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
                       strip_type=ws.WS2811_STRIP_GRB)
     # Intialize the library (must be called once before other functions).
     strip.begin()
